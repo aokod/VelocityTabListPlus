@@ -17,7 +17,6 @@ java {
 dependencies {
     implementation "de.codecrafter47.data:api:${rootProject.ext.dataApiVersion}"
     implementation "de.codecrafter47.data.bukkit:api:${rootProject.ext.dataApiVersion}"
-    implementation "de.codecrafter47.data.sponge:api:${rootProject.ext.dataApiVersion}"
     implementation "de.codecrafter47.data:minecraft:${rootProject.ext.dataApiVersion}"
     implementation "de.codecrafter47.data.velocity:api:${rootProject.ext.dataApiVersion}"
     implementation "de.codecrafter47.data:velocity:${rootProject.ext.dataApiVersion}"

@@ -38,7 +38,6 @@ import de.codecrafter47.data.api.DataKey;
 import de.codecrafter47.data.api.DataKeyRegistry;
 import de.codecrafter47.data.bukkit.api.BukkitData;
 import de.codecrafter47.data.minecraft.api.MinecraftData;
-import de.codecrafter47.data.sponge.api.SpongeData;
 import de.codecrafter47.data.velocity.api.VelocityData;
 import de.codecrafter47.taboverlay.config.player.Player;
 import de.codecrafter47.taboverlay.config.player.PlayerProvider;
@@ -63,7 +62,6 @@ public class RedisPlayerManager implements PlayerProvider {
     private static final DataKeyRegistry keyRegistry = DataKeyRegistry.of(
             MinecraftData.class,
             BukkitData.class,
-            SpongeData.class,
             VelocityData.class,
             BTLPDataKeys.class,
             BTLPVelocityDataKeys.class);
