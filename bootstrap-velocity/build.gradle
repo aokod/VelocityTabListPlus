@@ -5,8 +5,15 @@ plugins {
     id "com.gradleup.shadow" version "8.3.6"
 }
 
+repositories {
+    maven {
+        url = "https://repo.codemc.io/repository/maven-releases/"
+    }
+}
+
 dependencies {
     implementation project(':velocity-plugin')
+    implementation "com.github.retrooper:packetevents-velocity:2.12.0"
     compileOnly "com.velocitypowered:velocity-api:${rootProject.ext.velocityVersion}"
     annotationProcessor "com.velocitypowered:velocity-api:${rootProject.ext.velocityVersion}"
     implementation "org.bstats:bstats-velocity:3.0.0"
@@ -36,5 +43,9 @@ shadowJar {
     relocate 'org.yaml.snakeyaml', 'codecrafter47.bungeetablistplus.libs.snakeyaml'
     relocate 'org.mineskin', 'codecrafter47.bungeetablistplus.libs.mineskin'
     archiveClassifier.set(null)
-    minimize()
+    minimize {
+        exclude(dependency("com.github.retrooper:packetevents-api:.*"))
+        exclude(dependency("com.github.retrooper:packetevents-velocity:.*"))
+        exclude(dependency("io.github.retrooper.packetevents:.*"))
+    }
 }

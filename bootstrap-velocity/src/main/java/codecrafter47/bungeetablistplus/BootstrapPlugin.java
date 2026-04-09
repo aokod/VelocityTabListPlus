@@ -18,6 +18,7 @@
 package codecrafter47.bungeetablistplus;
 
 import codecrafter47.bungeetablistplus.util.VelocityPlugin;
+import com.github.retrooper.packetevents.PacketEvents;
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
@@ -25,9 +26,11 @@ import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
+import io.github.retrooper.packetevents.velocity.factory.VelocityPacketEventsBuilder;
 import lombok.Getter;
 import net.kyori.adventure.text.Component;
 import org.bstats.velocity.Metrics;
@@ -66,11 +69,13 @@ public class BootstrapPlugin implements VelocityPlugin {
     @Getter
     private final String version;
 
+    private final PluginContainer pluginContainer;
 
     @Inject
-    public BootstrapPlugin(final ProxyServer proxy, final Logger logger, final @DataDirectory Path dataDirectory, final Metrics.Factory metricsFactory) {
+    public BootstrapPlugin(final ProxyServer proxy, final Logger logger, final PluginContainer pluginContainer, final @DataDirectory Path dataDirectory, final Metrics.Factory metricsFactory) {
         this.proxy = proxy;
         this.logger = logger;
+        this.pluginContainer = pluginContainer;
         this.dataDirectory = dataDirectory;
         this.version = BootstrapPlugin.class.getAnnotation(Plugin.class).version();
         this.metricsFactory = metricsFactory;
@@ -88,11 +93,16 @@ public class BootstrapPlugin implements VelocityPlugin {
                 player.disconnect(Component.text(NO_RELOAD_PLAYERS));
             }
         }
+
+        PacketEvents.setAPI(VelocityPacketEventsBuilder.build(this.proxy, this.pluginContainer, this.logger, this.dataDirectory));
+        PacketEvents.getAPI().load();
+
         BungeeTabListPlus.getInstance(this).onLoad();
     }
 
     @Subscribe(order = PostOrder.LATE)
     public void onProxyInitializationLate(final ProxyInitializeEvent event) {
+        PacketEvents.getAPI().init();
         BungeeTabListPlus.getInstance(this).onEnable();
         // Metrics
         metricsFactory.make(this, 24808);
@@ -101,6 +111,9 @@ public class BootstrapPlugin implements VelocityPlugin {
     @Subscribe
     public void onProxyShutdown(final ProxyShutdownEvent event) {
         BungeeTabListPlus.getInstance().onDisable();
+        if (PacketEvents.getAPI() != null && !PacketEvents.getAPI().isTerminated()) {
+            PacketEvents.getAPI().terminate();
+        }
         if (!getProxy().isShuttingDown()) {
             getLogger().error("You cannot use ServerUtils to reload BungeeTabListPlus. Use /btlp reload instead.");
             if (!getProxy().getAllPlayers().isEmpty()) {

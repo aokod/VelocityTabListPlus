@@ -23,14 +23,11 @@ import codecrafter47.bungeetablistplus.protocol.PacketHandler;
 import codecrafter47.bungeetablistplus.protocol.PacketListener;
 import codecrafter47.bungeetablistplus.util.GeyserCompat;
 import codecrafter47.bungeetablistplus.version.ProtocolVersionProvider;
+import com.github.retrooper.packetevents.PacketEvents;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.player.ServerConnectedEvent;
-import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.proxy.connection.MinecraftConnection;
-import com.velocitypowered.proxy.connection.backend.VelocityServerConnection;
 import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
-import com.velocitypowered.proxy.network.Connections;
 import de.codecrafter47.taboverlay.TabView;
 import de.codecrafter47.taboverlay.config.misc.ChildLogger;
 import de.codecrafter47.taboverlay.handler.TabOverlayHandler;
@@ -47,13 +44,22 @@ public class TabViewManager {
 
     private final BungeeTabListPlus btlp;
     private final ProtocolVersionProvider protocolVersionProvider;
+    private final PacketListener packetListener;
+    private volatile boolean packetListenerRegistered;
 
     private final Map<Player, PlayerTabView> playerTabViewMap = new ConcurrentHashMap<>();
 
     public TabViewManager(BungeeTabListPlus btlp, ProtocolVersionProvider protocolVersionProvider) {
         this.btlp = btlp;
         this.protocolVersionProvider = protocolVersionProvider;
+        this.packetListener = new PacketListener(btlp, this);
         btlp.getPlugin().getProxy().getEventManager().register(btlp.getPlugin(), this);
+        if (PacketEvents.getAPI() != null) {
+            PacketEvents.getAPI().getEventManager().registerListener(this.packetListener);
+            this.packetListenerRegistered = true;
+        } else {
+            btlp.getLogger().warning("PacketEvents API is not available, packet listener could not be registered.");
+        }
     }
 
     public TabView onPlayerJoin(Player player) {
@@ -93,41 +99,34 @@ public class TabViewManager {
             packetHandler.onServerSwitch(protocolVersionProvider.has113OrLater(player));
 
         } catch (Exception ex) {
-            btlp.getLogger().log(Level.SEVERE, "Failed to inject packet listener", ex);
-        }
-    }
-
-    @Subscribe
-    public void onServerConnected(ServerPostConnectEvent event) {
-        if (GeyserCompat.isBedrockPlayer(event.getPlayer().getUniqueId())) {
-            return;
-        }
-        try {
-            Player player = event.getPlayer();
-
-            PlayerTabView tabView = playerTabViewMap.get(player);
-
-            if (tabView == null) {
-                throw new AssertionError("Received ServerSwitchEvent for non-existent player " + player.getUsername());
-            }
-
-            VelocityServerConnection server = (VelocityServerConnection) event.getPlayer().getCurrentServer().orElse(null);
-
-            MinecraftConnection wrapper = server.getConnection();
-
-            PacketHandler packetHandler = tabView.packetHandler;
-            PacketListener packetListener = new PacketListener(server, packetHandler, player);
-
-            wrapper.getChannel().pipeline().addBefore(Connections.HANDLER, "btlp-packet-listener", packetListener);
-
-        } catch (Exception ex) {
-            btlp.getLogger().log(Level.SEVERE, "Failed to inject packet listener", ex);
+            btlp.getLogger().log(Level.SEVERE, "Failed to process server switch", ex);
         }
     }
 
     @Nullable
     public TabView getTabView(Player player) {
         return playerTabViewMap.get(player);
+    }
+
+    @Nullable
+    public PacketHandler getPacketHandler(Player player) {
+        PlayerTabView tabView = playerTabViewMap.get(player);
+        return tabView != null ? tabView.packetHandler : null;
+    }
+
+    public boolean isPacketListenerRegistered() {
+        return packetListenerRegistered;
+    }
+
+    public int getTrackedViewCount() {
+        return playerTabViewMap.size();
+    }
+
+    public void close() {
+        if (packetListenerRegistered && PacketEvents.getAPI() != null) {
+            PacketEvents.getAPI().getEventManager().unregisterListener(this.packetListener);
+            packetListenerRegistered = false;
+        }
     }
 
     private PlayerTabView createTabView(Player player) {

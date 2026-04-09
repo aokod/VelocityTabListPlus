@@ -18,72 +18,89 @@
 package codecrafter47.bungeetablistplus.protocol;
 
 import codecrafter47.bungeetablistplus.BungeeTabListPlus;
+import codecrafter47.bungeetablistplus.managers.TabViewManager;
+import codecrafter47.bungeetablistplus.util.GeyserCompat;
+import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.event.PacketListenerAbstract;
+import com.github.retrooper.packetevents.event.PacketSendEvent;
+import com.github.retrooper.packetevents.protocol.packettype.PacketType;
+import com.github.retrooper.packetevents.wrapper.PacketWrapper;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfo;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoRemove;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerInfoUpdate;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerPlayerListHeaderAndFooter;
+import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerTeams;
 import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.proxy.connection.backend.VelocityServerConnection;
 import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
 import com.velocitypowered.proxy.protocol.MinecraftPacket;
-import com.velocitypowered.proxy.protocol.packet.HeaderAndFooterPacket;
-import com.velocitypowered.proxy.protocol.packet.LegacyPlayerListItemPacket;
-import com.velocitypowered.proxy.protocol.packet.RemovePlayerInfoPacket;
-import com.velocitypowered.proxy.protocol.packet.UpsertPlayerInfoPacket;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.MessageToMessageDecoder;
-import io.netty.util.ReferenceCountUtil;
 
-import java.util.List;
+public class PacketListener extends PacketListenerAbstract {
 
-public class PacketListener extends MessageToMessageDecoder<MinecraftPacket> {
-    private final VelocityServerConnection connection;
-    private final PacketHandler handler;
-    private final Player player;
+    private final BungeeTabListPlus btlp;
+    private final TabViewManager tabViewManager;
 
-    public PacketListener(VelocityServerConnection connection, PacketHandler handler, Player player) {
-        this.connection = connection;
-        this.handler = handler;
-        this.player = player;
+    public PacketListener(BungeeTabListPlus btlp, TabViewManager tabViewManager) {
+        this.btlp = btlp;
+        this.tabViewManager = tabViewManager;
     }
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, MinecraftPacket packet, List<Object> out) {
-        boolean shouldRelease = true;
+    public void onPacketSend(PacketSendEvent event) {
         try {
-            if (connection.isActive()) {
-                if (packet != null) {
+            if (!(event.getPlayer() instanceof Player player)) {
+                return;
+            }
 
-                    PacketListenerResult result = PacketListenerResult.PASS;
+            if (GeyserCompat.isBedrockPlayer(player.getUniqueId())) {
+                return;
+            }
 
-                    if (packet instanceof Team) {
-                        result = handler.onTeamPacket((Team) packet);
-                    } else if (packet instanceof LegacyPlayerListItemPacket) {
-                        result = handler.onPlayerListPacket((LegacyPlayerListItemPacket) packet);
-                    } else if (packet instanceof HeaderAndFooterPacket) {
-                        result = handler.onPlayerListHeaderFooterPacket((HeaderAndFooterPacket) packet);
-                    } else if (packet instanceof UpsertPlayerInfoPacket) {
-                        result = handler.onPlayerListUpdatePacket((UpsertPlayerInfoPacket) packet);
-                    } else if (packet instanceof RemovePlayerInfoPacket) {
-                        result = handler.onPlayerListRemovePacket((RemovePlayerInfoPacket) packet);
-                    }
+            PacketHandler handler = tabViewManager.getPacketHandler(player);
+            if (handler == null) {
+                return;
+            }
 
-                    if (result != PacketListenerResult.PASS) {
-                        if (result == PacketListenerResult.MODIFIED) {
-                            sendPacket(player, packet);
-                        }
-                        return;
-                    }
+            PacketListenerResult result;
+            MinecraftPacket packet;
+            var packetType = event.getPacketType();
+
+            if (packetType == PacketType.Play.Server.TEAMS) {
+                packet = PacketConversionUtil.toTeam(new WrapperPlayServerTeams(event), player.getProtocolVersion());
+                result = handler.onTeamPacket((Team) packet);
+            } else if (packetType == PacketType.Play.Server.PLAYER_INFO) {
+                packet = PacketConversionUtil.toLegacyPlayerInfo(new WrapperPlayServerPlayerInfo(event), player.getProtocolVersion());
+                result = handler.onPlayerListPacket((com.velocitypowered.proxy.protocol.packet.LegacyPlayerListItemPacket) packet);
+            } else if (packetType == PacketType.Play.Server.PLAYER_INFO_UPDATE) {
+                packet = PacketConversionUtil.toPlayerInfoUpdate(new WrapperPlayServerPlayerInfoUpdate(event), player.getProtocolVersion());
+                result = handler.onPlayerListUpdatePacket((com.velocitypowered.proxy.protocol.packet.UpsertPlayerInfoPacket) packet);
+            } else if (packetType == PacketType.Play.Server.PLAYER_INFO_REMOVE) {
+                packet = PacketConversionUtil.toPlayerInfoRemove(new WrapperPlayServerPlayerInfoRemove(event));
+                result = handler.onPlayerListRemovePacket((com.velocitypowered.proxy.protocol.packet.RemovePlayerInfoPacket) packet);
+            } else if (packetType == PacketType.Play.Server.PLAYER_LIST_HEADER_AND_FOOTER) {
+                packet = PacketConversionUtil.toHeaderAndFooter(new WrapperPlayServerPlayerListHeaderAndFooter(event), player.getProtocolVersion());
+                result = handler.onPlayerListHeaderFooterPacket((com.velocitypowered.proxy.protocol.packet.HeaderAndFooterPacket) packet);
+            } else {
+                return;
+            }
+
+            if (result != PacketListenerResult.PASS) {
+                event.setCancelled(true);
+                if (result == PacketListenerResult.MODIFIED) {
+                    sendPacket(player, packet);
                 }
             }
-            out.add(packet);
-            shouldRelease = false;
         } catch (Throwable th) {
-            BungeeTabListPlus.getInstance().reportError(th);
-        } finally {
-            if(!shouldRelease){
-                ReferenceCountUtil.retain(packet);
-            }
+            event.setCancelled(true);
+            btlp.reportError(th);
         }
     }
 
     public static void sendPacket(Player player, MinecraftPacket packet) {
+        PacketWrapper<?> wrapper = PacketConversionUtil.toWrapper(packet);
+        if (wrapper != null) {
+            PacketEvents.getAPI().getPlayerManager().sendPacketSilently(player, wrapper);
+            return;
+        }
         ((ConnectedPlayer) player).getConnection().write(packet);
     }
 }

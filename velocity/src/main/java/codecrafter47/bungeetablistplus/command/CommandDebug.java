@@ -27,17 +27,11 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.context.CommandContext;
 import com.velocitypowered.api.command.CommandSource;
 import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.proxy.connection.MinecraftConnection;
-import com.velocitypowered.proxy.connection.backend.VelocityServerConnection;
-import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
-import io.netty.channel.ChannelHandler;
 import lombok.SneakyThrows;
 import lombok.val;
 
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -45,7 +39,12 @@ public class CommandDebug {
     public static int commandHidden(CommandContext<CommandSource> context) {
         CommandSource sender = context.getSource();
         Player target = null;
-        String name = context.getArgument("name", String.class);
+        String name;
+        try {
+            name = context.getArgument("name", String.class);
+        } catch (IllegalArgumentException ignored) {
+            name = null;
+        }
 
 
         if (name == null || name.trim().isEmpty()) {
@@ -103,21 +102,15 @@ public class CommandDebug {
             return Command.SINGLE_SUCCESS;
         }
         Player player = (Player) context.getSource();
-        ConnectedPlayer userConnection = (ConnectedPlayer) player;
-        List<String> userPipeline = new ArrayList<>();
-        MinecraftConnection connection = ((ConnectedPlayer) player).getConnection();
-        for (Map.Entry<String, ChannelHandler> entry : connection.getChannel().pipeline()) {
-            userPipeline.add(entry.getKey());
-        }
+        BungeeTabListPlus btlp = BungeeTabListPlus.getInstance();
 
-        VelocityServerConnection serverConnection = userConnection.getConnectedServer();
-        List<String> serverPipeline = new ArrayList<>();
-        for (Map.Entry<String, ChannelHandler> entry : serverConnection.getConnection().getChannel().pipeline()) {
-            serverPipeline.add(entry.getKey());
-        }
+        boolean listenerRegistered = btlp.getTabViewManager() != null && btlp.getTabViewManager().isPacketListenerRegistered();
+        boolean handlerAttached = btlp.getTabViewManager() != null && btlp.getTabViewManager().getPacketHandler(player) != null;
+        int trackedViews = btlp.getTabViewManager() != null ? btlp.getTabViewManager().getTrackedViewCount() : 0;
 
-        player.sendMessage(ChatUtil.parseBBCode("&bUser: &f" + Joiner.on(", ").join(userPipeline) + "\n" +
-                "&bServer: &f" + Joiner.on(", ").join(serverPipeline)));
+        player.sendMessage(ChatUtil.parseBBCode("&bPacket listener: &f" + listenerRegistered
+                + " &7| &bHandler attached: &f" + handlerAttached
+                + " &7| &bTracked views: &f" + trackedViews));
         return Command.SINGLE_SUCCESS;
     }
 }

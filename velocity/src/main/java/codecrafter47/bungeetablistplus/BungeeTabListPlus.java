@@ -39,7 +39,6 @@ import codecrafter47.bungeetablistplus.updater.UpdateNotifier;
 import codecrafter47.bungeetablistplus.util.ExceptionHandlingEventExecutor;
 import codecrafter47.bungeetablistplus.util.GeyserCompat;
 import codecrafter47.bungeetablistplus.util.MatchingStringsCollection;
-import codecrafter47.bungeetablistplus.util.ReflectionUtil;
 import codecrafter47.bungeetablistplus.util.VelocityPlugin;
 import codecrafter47.bungeetablistplus.version.VelocityProtocolVersionProvider;
 import codecrafter47.bungeetablistplus.version.ProtocolVersionProvider;
@@ -47,7 +46,6 @@ import codecrafter47.bungeetablistplus.version.ViaVersionProtocolVersionProvider
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.velocitypowered.api.command.CommandManager;
-import com.velocitypowered.api.plugin.PluginContainer;
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier;
 import com.velocitypowered.api.proxy.messages.MinecraftChannelIdentifier;
 import com.velocitypowered.api.scheduler.ScheduledTask;
@@ -195,9 +193,6 @@ public class BungeeTabListPlus {
         }
 
         INSTANCE = this;
-
-        // Hacks to get around no Team packet in Velocity
-        ReflectionUtil.injectTeamPacketRegistry();
 
         Executor executor = (task) -> getProxy().getScheduler().buildTask(getPlugin(), task).schedule();
 
@@ -459,6 +454,9 @@ public class BungeeTabListPlus {
     public void onDisable() {
         // save cache
         cache.save();
+        if (tabViewManager != null) {
+            tabViewManager.close();
+        }
         plugin.getProxy().getScheduler().tasksByPlugin(plugin).forEach(ScheduledTask::cancel);
         mainThreadExecutor.shutdownGracefully();
         asyncExecutor.shutdownGracefully();
